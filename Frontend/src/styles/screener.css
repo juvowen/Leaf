@@ -5,8 +5,24 @@
 .page-head h1 { font: 300 clamp(40px, 6vw, 72px)/1.05 var(--display); letter-spacing: -0.025em; }
 .page-head p { margin-top: 12px; color: var(--ink-2); font-size: 18px; max-width: 58ch; }
 
+/* ---- Market tabs ---- */
+.asset-tabs {
+  margin-top: 32px; display: flex; gap: 4px; overflow-x: auto;
+  border-bottom: 1px solid var(--line); scrollbar-width: none;
+}
+.asset-tab {
+  flex: none; padding: 10px 16px; margin-bottom: -1px; background: none; cursor: pointer;
+  border: 0; border-bottom: 2px solid transparent;
+  font: 600 15px/1.2 var(--body); color: var(--ink-2); transition: color 0.15s, border-color 0.15s;
+}
+/* Pushed right with a margin, not justify-content, so a scrolled row still starts at the first tab. */
+.asset-tab:first-child { margin-left: auto; }
+.asset-tab:hover { color: var(--ink); }
+.asset-tab.on { color: var(--leaf); border-bottom-color: var(--leaf); }
+.asset-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--r); }
+
 .workspace {
-  margin-top: 40px; display: grid; gap: 56px;
+  margin-top: 32px; display: grid; gap: 56px;
   grid-template-columns: 330px minmax(0, 1fr); align-items: start;
 }
 .controls-col { display: flex; flex-direction: column; gap: 16px; }
@@ -105,6 +121,7 @@
 .empty.error h2 { color: var(--fail); }
 
 /* ---- Results header and tabs ---- */
+.as-of { font-weight: 650; font-size: 14px; color: var(--ink); margin-bottom: 2px; }
 .meta { color: var(--ink-2); font-size: 14px; }
 .sample-note { margin-top: 4px; color: var(--warn); font-weight: 650; font-size: 14px; }
 .tabs { display: flex; gap: 4px; margin-top: 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
@@ -131,9 +148,10 @@
 .pair.open { background: var(--white); }
 .row { width: 100%; background: none; border: 0; padding: 12px; text-align: left; cursor: pointer; }
 .row:hover { background: var(--white); }
-.c-pair { display: flex; align-items: baseline; gap: 6px; }
-.c-pair strong { font: 500 21px/1.2 var(--display); letter-spacing: -0.005em; }
+.c-pair { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; min-width: 0; }
+.c-pair strong { font: 500 21px/1.2 var(--display); letter-spacing: -0.005em; overflow-wrap: anywhere; }
 .c-pair i { color: var(--ink-2); font-style: normal; }
+.c-pair .px { flex-basis: 100%; font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .lbl { display: none; font-style: normal; color: var(--ink-2); font-size: 12px; }
 .c-stat small { display: block; font-size: 11.5px; font-weight: 650; color: var(--warn); }
 .c-stat.hot { color: var(--warn); font-weight: 700; background: var(--warn-bg); border-radius: var(--r); padding: 3px 8px; }

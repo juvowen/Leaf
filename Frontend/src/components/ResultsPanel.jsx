@@ -1,24 +1,34 @@
 import { useMemo, useState } from 'react';
 import LeafChart from './LeafChart.jsx';
 import SpreadChart from './SpreadChart.jsx';
-import { COLUMNS, DEFAULT_COLUMNS, DETAIL_STATS, num } from '../format.js';
+import { COLUMNS, DEFAULT_COLUMNS, DETAIL_STATS, asOf, num, price, ticker } from '../format.js';
 import { CUSTOM_LABEL } from './ParamBuilder.jsx';
 
 function PairDetail({ row }) {
   const s = row.series;
+  const a = ticker(row.a);
+  const b = ticker(row.b);
   return (
     <div className="detail">
       <div className="charts">
         <figure>
           <figcaption>Prices, rebased to 100 · the shaded leaf is the gap between them</figcaption>
-          <LeafChart a={s.a} b={s.b} dates={s.dates} nameA={row.a} nameB={row.b} />
+          <LeafChart a={s.a} b={s.b} dates={s.dates} nameA={a} nameB={b} />
         </figure>
         <figure>
           <figcaption>Spread z-score · the shaded bands are the ±2 entry zone</figcaption>
-          <SpreadChart z={s.z} name={`${row.a} / ${row.b}`} />
+          <SpreadChart z={s.z} name={`${a} / ${b}`} />
         </figure>
       </div>
       <dl className="stats">
+        <div>
+          <dt>{a} last price</dt>
+          <dd>{price(row.price_a)}</dd>
+        </div>
+        <div>
+          <dt>{b} last price</dt>
+          <dd>{price(row.price_b)}</dd>
+        </div>
         {DETAIL_STATS.map(([label, key, fmt]) => (
           <div key={key}>
             <dt>{label}</dt>
@@ -94,14 +104,19 @@ function ResultTable({ strategyKey, results }) {
                     a={row.series.a}
                     b={row.series.b}
                     dates={row.series.dates}
-                    nameA={row.a}
-                    nameB={row.b}
+                    nameA={ticker(row.a)}
+                    nameB={ticker(row.b)}
                   />
                 </span>
                 <span className="c-pair">
-                  <strong>{row.a}</strong>
+                  <strong title={row.a}>{ticker(row.a)}</strong>
                   <i aria-hidden="true">/</i>
-                  <strong>{row.b}</strong>
+                  <strong title={row.b}>{ticker(row.b)}</strong>
+                  {row.price_a != null && (
+                    <small className="px">
+                      {price(row.price_a)} / {price(row.price_b)}
+                    </small>
+                  )}
                 </span>
                 {cols.map((c) => {
                   const v = row[c.key];
@@ -173,6 +188,7 @@ export default function ResultsPanel({ scan, strategies }) {
 
   return (
     <section className="results">
+      {data.as_of && <p className="as-of">{asOf(data.as_of)}</p>}
       <p className="meta">
         {data.universe_size} tickers · {data.pairs_screened} pairs passed the correlation prefilter
         {data.dropped?.length > 0 && ` · no usable data for ${data.dropped.join(', ')}`}

@@ -117,6 +117,8 @@ class Lego:
             "a": a,
             "b": b,
             "score": round(score, 1),
+            "price_a": round(float(p.a.close[-1]), 6),
+            "price_b": round(float(p.b.close[-1]), 6),
             **pair_stats(p),
             "series": {
                 "dates": [d.strftime("%Y-%m-%d") for d in self.prices.close.index[-n:]],
@@ -128,7 +130,12 @@ class Lego:
 
     def _stock_rows(self, stock_scores: dict[str, list[float]]) -> list[dict]:
         rows = [
-            {"ticker": t, "score": round(100 * sum(m) / len(m), 1) if m else 100.0, **stock_stats(self.stocks[t])}
+            {
+                "ticker": t,
+                "score": round(100 * sum(m) / len(m), 1) if m else 100.0,
+                "price": round(float(self.stocks[t].close[-1]), 6),
+                **stock_stats(self.stocks[t]),
+            }
             for t, m in stock_scores.items()
         ]
         return sorted(rows, key=lambda r: -r["score"])[:MAX_RESULTS]

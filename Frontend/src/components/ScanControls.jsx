@@ -34,7 +34,7 @@ export const PERIODS = [
   },
 ];
 
-export default function ScanControls({ days, onDays, onScan, busy, selectedCount }) {
+export default function ScanControls({ source, days, onDays, onScan, busy, selectedCount }) {
   const disabled = busy || selectedCount === 0;
   const [peek, setPeek] = useState(null); // shown while hovering or focusing an (i)
   const [pinned, setPinned] = useState(null); // shown after clicking an (i), until clicked again
@@ -48,7 +48,7 @@ export default function ScanControls({ days, onDays, onScan, busy, selectedCount
         if (!disabled) onScan();
       }}
     >
-      <p className="source">Daily prices from Yahoo Finance, across a built-in list of stocks and funds.</p>
+      <p className="source">{source}</p>
 
       <fieldset className="field periods">
         <legend>Lookback</legend>

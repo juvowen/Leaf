@@ -1,4 +1,5 @@
 """Tests for Lego. Synthetic data only: Yahoo is always a stand-in here, never the network."""
+import datetime as dt
 import math
 
 import numpy as np
@@ -159,7 +160,8 @@ def test_explanation_names_the_best_pair():
     ({"provider": "bloomberg", "tickers": None, "days": 750}, "not a data source"),
     ({"provider": "synthetic", "tickers": ["CO1A"], "days": 750}, "at least two"),
     ({"provider": "synthetic", "tickers": None, "days": 10}, "Lookback"),
-    ({"provider": "synthetic", "tickers": [f"T{i}" for i in range(81)], "days": 750}, "80 or fewer"),
+    ({"provider": "synthetic", "tickers": [f"T{i}" for i in range(151)], "days": 750}, "150 or fewer"),
+    ({"provider": "yahoo", "tickers": None, "days": 750, "asset_class": "bonds"}, "not an asset class"),
 ])
 def test_bad_requests_say_what_is_wrong(kwargs, words):
     with pytest.raises(ProviderError) as info:
@@ -189,6 +191,16 @@ def test_yahoo_uses_the_cache_the_second_time(monkeypatch):
     assert calls == [["AAA", "BBB"]]  # downloaded once, then read from disk
     pd.testing.assert_frame_equal(first.close, second.close)
     assert first.close.shape == (250, 2)
+    assert first.fetched_at is not None and second.fetched_at <= dt.datetime.now().astimezone()
+
+
+def test_yahoo_downloads_again_once_the_cache_is_stale(monkeypatch):
+    calls = []
+    monkeypatch.setattr(providers, "_download", fake_yahoo(calls, {"AAA": frame(seed=1), "BBB": frame(seed=2)}))
+    get_prices("yahoo", ["AAA", "BBB"], 250)
+    monkeypatch.setattr(providers, "CACHE_MAX_AGE", dt.timedelta(0))
+    get_prices("yahoo", ["AAA", "BBB"], 250)
+    assert len(calls) == 2
 
 
 def test_yahoo_drops_unknown_and_short_tickers(monkeypatch):
@@ -211,6 +223,29 @@ def test_universe_endpoint():
     r = client.get("/api/universe/synthetic")
     assert r.status_code == 200 and "CO1A" in r.json()["tickers"]
     assert client.get("/api/universe/nope").status_code == 404
+    assert client.get("/api/universe/yahoo?asset_class=bonds").status_code == 422
+
+
+@pytest.mark.parametrize("asset_class,member", [
+    ("stock", "AAPL"), ("crypto", "BTC-USD"), ("forex", "EURUSD=X"), ("commodity", "GC=F"),
+])
+def test_each_asset_class_has_its_own_universe(asset_class, member):
+    tickers = client.get(f"/api/universe/yahoo?asset_class={asset_class}").json()["tickers"]
+    assert member in tickers and len(set(tickers)) == len(tickers)
+    assert 2 <= len(tickers) <= providers.MAX_TICKERS
+    others = set().union(*(v for k, v in providers.YAHOO_UNIVERSES.items() if k != asset_class))
+    assert not others & set(tickers)
+
+
+def test_crypto_asks_for_calendar_days(monkeypatch):
+    seen = {}
+    def fake(tickers, days, calendar_days=None):
+        seen.update(days=days, calendar_days=calendar_days)
+        raise ProviderError("stop")
+    monkeypatch.setattr(providers, "_yahoo", fake)
+    with pytest.raises(ProviderError):
+        get_prices("yahoo", None, 252, "crypto")
+    assert seen == {"days": 365, "calendar_days": 365}
 
 
 def test_scan_multi_matches_what_the_screener_reads():
@@ -218,10 +253,12 @@ def test_scan_multi_matches_what_the_screener_reads():
     assert r.status_code == 200
     body = r.json()
     assert body["universe_size"] == 12 and body["pairs_screened"] > 0
+    assert body["as_of"]["date"] and body["as_of"]["fetched_at"] is None  # synthetic has no fetch time
     assert set(body["strategies"]) == {"mean_reversion", "hedging"}
     row = body["strategies"]["mean_reversion"]["results"][0]
     for key in ("a", "b", "score", "corr", "coint_p", "half_life", "zscore", "hedge_ratio",
-                "return_beta", "hedge_effectiveness", "spread_std", "vol_a", "vol_b", "series"):
+                "return_beta", "hedge_effectiveness", "spread_std", "vol_a", "vol_b", "series",
+                "price_a", "price_b"):
         assert key in row
     assert body["strategies"]["mean_reversion"]["explanation"]
 

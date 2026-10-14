@@ -37,6 +37,18 @@ export const PARAMS = [
     ticks: [1, 120],
     fmt: (v) => `${v} d`,
   },
+  {
+    key: 'spread_z',
+    label: 'Spread z-score',
+    hint: 'How far the spread is from its average right now, in standard deviations. Positive: the first leg is expensive against the second. Beyond ±2 is the usual entry zone.',
+    kind: 'range',
+    min: -5,
+    max: 5,
+    step: 0.1,
+    start: [2, 5],
+    ticks: [-5, 0, 5],
+    fmt: (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)}`,
+  },
 ];
 
 export const CUSTOM_KEY = 'custom';
