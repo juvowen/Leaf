@@ -3,6 +3,7 @@ import LeafChart from './LeafChart.jsx';
 import SpreadChart from './SpreadChart.jsx';
 import { COLUMNS, DEFAULT_COLUMNS, DETAIL_STATS, asOf, num, price, ticker } from '../format.js';
 import { CUSTOM_LABEL } from './ParamBuilder.jsx';
+import { MARKET_TAGS } from './AssetTabs.jsx';
 
 function PairDetail({ row }) {
   const s = row.series;
@@ -114,7 +115,10 @@ function ResultTable({ strategyKey, results }) {
                   <strong title={row.b}>{ticker(row.b)}</strong>
                   {row.price_a != null && (
                     <small className="px">
-                      {price(row.price_a)} / {price(row.price_b)}
+                      {row.market_a && <span className="mkt">{MARKET_TAGS[row.market_a]}</span>}
+                      {price(row.price_a)} /{' '}
+                      {row.market_b && <span className="mkt">{MARKET_TAGS[row.market_b]}</span>}
+                      {price(row.price_b)}
                     </small>
                   )}
                 </span>
@@ -219,10 +223,17 @@ export default function ResultsPanel({ scan, strategies }) {
         {block.results.length === 0 ? (
           <div className="none">
             <h2>No pairs fit {label(current).toLowerCase()}</h2>
-            <p>
-              Nothing in the universe meets the requirements over this window. Try a longer
-              lookback.
-            </p>
+            {block.why_none ? (
+              <p>
+                {block.why_none} Try a different lookback, loosen that requirement, or try
+                another market.
+              </p>
+            ) : (
+              <p>
+                Nothing in the universe meets the requirements over this window. Try a longer
+                lookback.
+              </p>
+            )}
           </div>
         ) : (
           <>

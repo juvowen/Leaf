@@ -5,7 +5,11 @@ export const ASSET_CLASSES = [
   { key: 'crypto', label: 'Crypto', source: 'Daily prices from Yahoo Finance, across about 30 coins priced in dollars. Crypto trades every day, so a period covers more days.' },
   { key: 'forex', label: 'Forex', source: 'Daily rates from Yahoo Finance, across major and cross currency pairs plus currency funds.' },
   { key: 'commodity', label: 'Commodities', source: 'Daily prices from Yahoo Finance, across metal, energy, grain and livestock futures and the funds that hold them.' },
+  { key: 'mix', label: 'Mix', source: 'Daily prices from Yahoo Finance, across a selection from every market. Only pairs that cross markets are screened, like oil stocks against crude or the yen against gold. Weekdays only, so crypto weekends roll into Monday.' },
 ];
+
+// Short names for the market tags on mixed pairs.
+export const MARKET_TAGS = { stock: 'Stock', crypto: 'Crypto', forex: 'FX', commodity: 'Commodity' };
 
 export const PANEL_ID = 'asset-panel';
 export const tabId = (key) => `asset-tab-${key}`;

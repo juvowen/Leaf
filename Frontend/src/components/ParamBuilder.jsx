@@ -9,7 +9,7 @@ export const PARAMS = [
     min: -1,
     max: 1,
     step: 0.05,
-    start: [-0.9, -0.5],
+    start: [0.5, 1], // moving together: every market has these. Drag below 0 for hedges.
     ticks: [-1, 0, 1],
     fmt: (v) => v.toFixed(2),
   },

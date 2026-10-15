@@ -43,6 +43,7 @@ class Prices:
     volume: pd.DataFrame
     dropped: list[str] = field(default_factory=list)  # asked for, but not enough data
     fetched_at: dt.datetime | None = None  # when the oldest of these prices came from the source
+    markets: dict[str, str] | None = None  # set for a mixed scan: ticker -> market, pairs must cross
 
     @property
     def tickers(self) -> list[str]:
@@ -54,7 +55,7 @@ class Prices:
 # Real Yahoo Finance symbols, one list per asset class, grouped so there are pairs worth
 # finding: same-sector names, and funds or contracts that track the same thing, which should
 # come out cointegrated. A scan stays inside one asset class.
-ASSET_CLASSES = ("stock", "crypto", "forex", "commodity")
+ASSET_CLASSES = ("stock", "crypto", "forex", "commodity", "mix")
 
 YAHOO_UNIVERSES = {
     # Stocks and equity funds. Stocks almost never move opposite each other, so volatility
@@ -114,6 +115,36 @@ YAHOO_UNIVERSES = {
     ],
 }
 
+# "mix" screens across markets: a handful of the most traded names from each, and only pairs
+# whose legs come from different markets (oil stocks against crude, the yen against gold,
+# commodity currencies like AUD and CAD against metals and oil, bitcoin against the Nasdaq).
+MIX_PICKS = {
+    "stock": ["SPY", "QQQ", "IWM", "DIA", "AAPL", "MSFT", "NVDA", "AMZN", "XOM", "CVX", "COP", "SLB",
+              "JPM", "GS", "CAT", "DE", "KO", "WMT", "XLE", "SMH"],
+    "crypto": ["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "BNB-USD", "DOGE-USD", "ADA-USD",
+               "LTC-USD", "LINK-USD", "AVAX-USD"],
+    "forex": ["EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCAD=X", "USDCHF=X", "NZDUSD=X",
+              "USDMXN=X", "USDZAR=X", "USDNOK=X", "UUP", "FXY"],
+    "commodity": ["GC=F", "SI=F", "HG=F", "CL=F", "BZ=F", "NG=F", "ZC=F", "ZW=F", "ZS=F",
+                  "GLD", "SLV", "USO", "GDX", "DBC"],
+}
+YAHOO_UNIVERSES["mix"] = [t for picks in MIX_PICKS.values() for t in picks]
+
+
+def market_of(ticker: str) -> str:
+    """Which single market a ticker belongs to, for keeping mixed pairs across markets."""
+    for market, tickers in YAHOO_UNIVERSES.items():
+        if market != "mix" and ticker in tickers:
+            return market
+    if ticker.endswith("-USD"):
+        return "crypto"
+    if ticker.endswith("=X"):
+        return "forex"
+    if ticker.endswith("=F"):
+        return "commodity"
+    return "stock"
+
+
 # Made-up names. COxA/COxB are cointegrated (CO1 reverts fast, CO2 slower), HCxA/HCxB move
 # opposite each other day to day with no long-run link (hedges), RWx are unrelated.
 SYNTHETIC_UNIVERSE = ["CO1A", "CO1B", "CO2A", "CO2B", "HC1A", "HC1B", "HC2A", "HC2B", "RW1", "RW2", "RW3", "RW4"]
@@ -142,6 +173,11 @@ def get_prices(provider: str, tickers: list[str] | None, days: int, asset_class:
     if provider == "yahoo" and asset_class == "crypto":
         # Crypto trades every day, so the same stretch of calendar time has more rows.
         prices = _yahoo(tickers, days * 365 // 252, calendar_days=days * 365 // 252)
+    elif provider == "yahoo" and asset_class == "mix":
+        # Weekdays only, so crypto's weekend moves land on Monday instead of showing every
+        # other market as flat on Saturday and Sunday.
+        prices = _yahoo(tickers, days, weekdays_only=True)
+        prices.markets = {t: market_of(t) for t in prices.tickers}
     else:
         prices = _synthetic(tickers, days) if provider == "synthetic" else _yahoo(tickers, days)
     if len(prices.tickers) < 2:
@@ -169,9 +205,12 @@ def _clean_tickers(tickers: list[str] | None) -> list[str]:
     return list(seen)
 
 
-def _align(close: pd.DataFrame, volume: pd.DataFrame, days: int, asked: list[str]) -> Prices:
+def _align(close: pd.DataFrame, volume: pd.DataFrame, days: int, asked: list[str], weekdays_only: bool = False) -> Prices:
     """Keep the last `days` rows, fill one-off gaps, and drop tickers that still have holes."""
-    close = close.sort_index().ffill(limit=3).tail(days)
+    close = close.sort_index()
+    if weekdays_only:
+        close = close[close.index.dayofweek < 5]
+    close = close.ffill(limit=3).tail(days)
     volume = volume.reindex(close.index).fillna(0)
     usable = [t for t in asked if t in close and close[t].notna().all() and (close[t] > 0).all()]
     dropped = [t for t in asked if t not in usable]
@@ -223,7 +262,7 @@ def _synthetic(tickers: list[str], days: int) -> Prices:
 
 # ---------- yahoo ----------
 
-def _yahoo(tickers: list[str], days: int, calendar_days: int | None = None) -> Prices:
+def _yahoo(tickers: list[str], days: int, calendar_days: int | None = None, weekdays_only: bool = False) -> Prices:
     """Real daily data. Each ticker is downloaded at most every CACHE_MAX_AGE, then read from disk."""
     # Trading days are about 252 of 365, so ask for a bit more calendar time than needed.
     span = calendar_days if calendar_days is not None else int(days * 365 / 252)
@@ -243,7 +282,7 @@ def _yahoo(tickers: list[str], days: int, calendar_days: int | None = None) -> P
         raise ProviderError(f"Yahoo Finance returned no prices for: {', '.join(tickers)}. Check the symbols.")
     close = pd.DataFrame({t: f["Close"] for t, f in found.items()})
     volume = pd.DataFrame({t: f["Volume"] for t, f in found.items()})
-    prices = _align(close, volume, days, tickers)
+    prices = _align(close, volume, days, tickers, weekdays_only)
     prices.fetched_at = min(fetched[t] for t in prices.tickers) if prices.tickers else None
     return prices
 

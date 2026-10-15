@@ -233,8 +233,33 @@ def test_each_asset_class_has_its_own_universe(asset_class, member):
     tickers = client.get(f"/api/universe/yahoo?asset_class={asset_class}").json()["tickers"]
     assert member in tickers and len(set(tickers)) == len(tickers)
     assert 2 <= len(tickers) <= providers.MAX_TICKERS
-    others = set().union(*(v for k, v in providers.YAHOO_UNIVERSES.items() if k != asset_class))
+    others = set().union(*(v for k, v in providers.YAHOO_UNIVERSES.items() if k not in (asset_class, "mix")))
     assert not others & set(tickers)
+
+
+def test_mix_picks_come_from_their_own_market():
+    for market, picks in providers.MIX_PICKS.items():
+        assert set(picks) <= set(providers.YAHOO_UNIVERSES[market])
+        assert all(providers.market_of(t) == market for t in picks)
+    assert providers.YAHOO_UNIVERSES["mix"] == [t for p in providers.MIX_PICKS.values() for t in p]
+
+
+def test_mix_only_pairs_across_markets_on_weekdays(monkeypatch):
+    days = pd.date_range(end=pd.Timestamp.today().normalize(), periods=500)  # every day, like crypto
+    def daily(seed):
+        close = 100 * np.exp(np.cumsum(np.random.default_rng(seed).normal(0, 0.01, len(days))))
+        return pd.DataFrame({"Close": close, "Volume": 1e6}, index=days)
+    data = {"SPY": daily(1), "QQQ": daily(2), "BTC-USD": daily(3), "GC=F": daily(4)}
+    monkeypatch.setattr(providers, "_download", fake_yahoo([], data))
+    prices = get_prices("yahoo", list(data), 250, "mix")
+    assert (prices.close.index.dayofweek < 5).all() and len(prices.close) == 250
+    assert prices.markets == {"SPY": "stock", "QQQ": "stock", "BTC-USD": "crypto", "GC=F": "commodity"}
+
+    anything = parse_spec({"name": "x", "summary": "", "needs": [{"metric": "corr", "op": "between", "value": [-1, 1]}]})
+    result = Lego(prices).run(anything)
+    legs = {(r["a"], r["b"]) for r in result["pairs"]}
+    assert ("SPY", "QQQ") not in legs and len(legs) == 5  # 6 pairs, less the one stock/stock pair
+    assert all(r["market_a"] != r["market_b"] for r in result["pairs"])
 
 
 def test_crypto_asks_for_calendar_days(monkeypatch):
@@ -288,3 +313,16 @@ def test_lego_scan_bad_spec_and_bad_provider_are_plain_errors():
     good = {"needs": [{"metric": "corr", "op": ">=", "value": 0.5}]}
     r = client.post("/api/lego/scan", json={"spec": good, "provider": "bloomberg"})
     assert r.status_code == 404 and isinstance(r.json()["detail"], str)
+
+
+def test_an_empty_result_says_which_need_emptied_it():
+    lego = Lego(get_prices("synthetic", None, 750))
+    nothing = parse_spec({"name": "x", "summary": "", "needs": [
+        {"metric": "corr", "op": ">=", "value": 0.5},
+        {"metric": "half_life", "op": "<=", "value": 0.5},
+    ]})
+    result = lego.run(nothing)
+    assert result["matched"] == 0
+    assert result["why_none"].startswith("None of the ") and "left after the earlier checks" in result["why_none"]
+    assert "half-life at most 0.5" in result["why_none"] and "The closest is" in result["why_none"]
+    assert lego.run(PRESETS["arbitrage"])["why_none"] == ""

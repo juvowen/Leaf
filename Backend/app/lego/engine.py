@@ -87,7 +87,10 @@ class Lego:
         slow = [n for n in pair_needs if n.metric not in PREFILTER]
         pairs, screened = [], 0
         usable = [t for t in self.tickers if t in stock_scores]
+        markets = self.prices.markets
         for a, b in combinations(usable, 2):
+            if markets and markets[a] == markets[b]:
+                continue  # a mixed scan only keeps pairs across markets
             p = self.pair(a, b)
             margins = _check(p, quick)
             if margins is None:
@@ -103,12 +106,36 @@ class Lego:
             pairs.append((score, a, b, p))
 
         pairs.sort(key=lambda row: -row[0])
+        why = "" if pairs else self._why_none(stock_needs, pair_needs, usable)
         return {
             "pairs": [self._pair_row(score, a, b, p) for score, a, b, p in pairs[:MAX_RESULTS]],
             "stocks": self._stock_rows(stock_scores) if stock_needs else [],
             "screened": screened,
             "matched": len(pairs),
+            "why_none": why,
         }
+
+    def _why_none(self, stock_needs: list[Need], pair_needs: list[Need], usable: list[str]) -> str:
+        """Which need left nothing, and how close the market came to it. Needs are tried in the
+        order the scan uses, each on what got past the ones before, so the answer names the need
+        that actually emptied the list."""
+        if len(usable) < 2:
+            for n in stock_needs:
+                values = [FUNCTIONS[n.metric](s) for s in self.stocks.values()]
+                if sum(_passes(v, n) for v in values) < 2:
+                    return _shortfall(n, values, "tickers", narrowed=False)
+            return "Fewer than two tickers have usable prices."
+        markets = self.prices.markets
+        candidates = [
+            self.pair(a, b) for a, b in combinations(usable, 2) if not (markets and markets[a] == markets[b])
+        ]
+        for i, n in enumerate(pair_needs):
+            values = [FUNCTIONS[n.metric](p) for p in candidates]
+            passing = [p for p, v in zip(candidates, values) if _passes(v, n)]
+            if not passing:
+                return _shortfall(n, values, "pairs", narrowed=i > 0)
+            candidates = passing
+        return ""
 
     def _pair_row(self, score: float, a: str, b: str, p: Pair) -> dict:
         n = min(CHART_DAYS, len(p.a.close))
@@ -119,6 +146,7 @@ class Lego:
             "score": round(score, 1),
             "price_a": round(float(p.a.close[-1]), 6),
             "price_b": round(float(p.b.close[-1]), 6),
+            **({"market_a": self.prices.markets[a], "market_b": self.prices.markets[b]} if self.prices.markets else {}),
             **pair_stats(p),
             "series": {
                 "dates": [d.strftime("%Y-%m-%d") for d in self.prices.close.index[-n:]],
@@ -139,6 +167,31 @@ class Lego:
             for t, m in stock_scores.items()
         ]
         return sorted(rows, key=lambda r: -r["score"])[:MAX_RESULTS]
+
+
+def _need_words(n: Need) -> str:
+    if n.op == "between":
+        return f"between {n.value[0]:g} and {n.value[1]:g}"
+    return f"{ {'>': 'above', '>=': 'at least', '<': 'below', '<=': 'at most'}[n.op] } {n.value:g}"
+
+
+def _shortfall(n: Need, values: list[float], what: str, narrowed: bool) -> str:
+    """'None of the 406 pairs has correlation between -0.9 and -0.5. The closest is 0.0695.'"""
+    label = METRICS[n.metric].label.lower()
+    left = " left after the earlier checks" if narrowed else ""
+    if len(values) == 1:
+        head = f"The one {what[:-1]}{left} does not have {label} {_need_words(n)}."
+    else:
+        head = f"None of the {len(values)} {what}{left} has {label} {_need_words(n)}."
+    seen = [v for v in values if v is not None and math.isfinite(v)]
+    if not seen:
+        return head
+    if n.op == "between":
+        lo, hi = n.value
+        closest = min(seen, key=lambda v: lo - v if v < lo else v - hi)
+    else:
+        closest = max(seen) if n.op in (">", ">=") else min(seen)
+    return f"{head} The closest is {closest:.3g}."
 
 
 def explain(spec: Spec, result: dict) -> str:

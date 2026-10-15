@@ -65,6 +65,7 @@ def lego_scan(req: LegoScanRequest):
         "pairs": result["pairs"],
         "stocks": result["stocks"],
         "explanation": explain(spec, result),
+        "why_none": result["why_none"],
     }
 
 
@@ -97,6 +98,7 @@ def scan_multi(req: MultiScanRequest):
             "matched": result["matched"],
             "results": result["pairs"],
             "explanation": explain(spec, result),
+            "why_none": result["why_none"],
         }
     return {
         "provider": req.provider,
